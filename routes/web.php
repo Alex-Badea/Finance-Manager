@@ -16,48 +16,45 @@ use Illuminate\Support\Facades\Session;
 | contains the "web" middleware group. Now create something great!
 |
 */
+define('baseUrl', 'https://api.ing.com');
 
 Route::get('/ob', function () {
-    define('keyId', 'e77d776b-90af-4684-bebc-521e5b2614dd');
-    define('method', 'POST');
-    define('baseUrl', 'https://api.sandbox.ing.com');
-    define('path', '/oauth2/token');
-    define('payload', 'grant_type=client_credentials');
-    define('digest', 'SHA-256=' . base64_encode(
-            openssl_digest(payload, 'sha256', true)));
-    define('date', Carbon::now('UTC')->format('D, d M Y H:i:s \G\M\T'));
-    define('rawSignature', '(request-target): ' . strtolower(method)
-        . ' ' . path . "\ndate: " . date . "\ndigest: " . digest);
-
-    $pk = openssl_get_privatekey(
-        'file:///home/vagrant/code/_v_certs/example_client_signing.key', 'changeit');
-    if (!$pk)
-        dd('pk fail');
-
-    $signature = '';
-    openssl_sign(rawSignature, $signature, $pk, OPENSSL_ALGO_SHA256);
-    $signature = base64_encode($signature);
-
-    $client = new Client();
-    $response = $client->post(baseUrl . path, [
+    $client = new Client([
+        'cert' => '/home/vagrant/code/_v_certs/tlsCert.crt',
+        'ssl_key' => '/home/vagrant/code/_v_certs/tlsCert.key'
+    ]);
+    $path = '/oauth2/token';
+    $stdHeaders = genStdHeaders('grant_type=client_credentials', 'post', $path);
+    $response = $client->post(baseUrl . $path, [
         'headers' => [
-            'Digest' => digest,
-            'Date' => date,
-            'Authorization' => 'Signature keyId="' . keyId . '",algorithm="rsa-sha256",'
-                . 'headers="(request-target) date digest",signature="' . $signature . '"',
+            'Digest' => $stdHeaders['Digest'],
+            'Date' => $stdHeaders['Date'],
+            'Authorization' => 'Signature ' . $stdHeaders['Signature'],
         ],
         'form_params' => ['grant_type' => 'client_credentials'],
-        'cert' => '/home/vagrant/code/_v_certs/example_client_tls.cer',
-        'ssl_key' => '/home/vagrant/code/_v_certs/example_client_tls.key'
     ]);
     $token = json_decode($response->getBody())->access_token;
-    dd($token);
+    dump($token);
+    dump(json_decode($response->getBody()));
+
+    // Showcase
+    $path = '/greetings/single';
+    $stdHeaders = genStdHeaders('', 'get', $path);
+    dump($stdHeaders);
+    $response = $client->get(baseUrl . $path, [
+        'headers' => [
+            'Digest' => $stdHeaders['Digest'],
+            'Date' => $stdHeaders['Date'],
+            'Signature' => $stdHeaders['Signature'],
+            'Authorization' => 'Bearer ' . $token
+        ],
+    ]);
+    dump(json_decode($response->getBody()));
 });
 
 Route::get('/psd2', function () {
     define('keyId', 'SN=5E4299BE');
     define('method', 'POST');
-    define('baseUrl', 'https://api.sandbox.ing.com');
     define('path', '/oauth2/token');
     define('payload', 'grant_type=client_credentials');
     define('digest', 'SHA-256=' . base64_encode(
@@ -98,7 +95,7 @@ Route::get('/psd2', function () {
     $redirectUrl = 'http://financial-manager.test/success';
     $scope = 'payment-accounts%3Abalances%3Aview%20payment-accounts%3Atransactions%3Aview';
     $path = '/oauth2/authorization-server-url?scope=' . $scope
-        . '&redirect_uri=' . $redirectUrl . '&country_code=RO';
+        . '&redirect_uri=' . $redirectUrl . '&country_code=NL';
     $digest = 'SHA-256=' . base64_encode(openssl_digest('', 'sha256'));
     $rawSignature = '(request-target): ' . strtolower($method) . ' ' . $path
         . "\ndate: " . date . "\ndigest: " . $digest;
@@ -186,25 +183,4 @@ Route::get('/success', function () {
         'ssl_key' => '/home/vagrant/code/_v_certs/example_client_tls.key'
     ]);
     dump(json_decode($response->getBody()));
-
-    // Account information service - balance
-    $path = json_decode($response->getBody())->accounts[0]->_links->balances->href;
-    $rawSignature = '(request-target): ' . strtolower($method)
-        . ' ' . $path . "\ndate: " . date . "\ndigest: " . $digest;
-    openssl_sign($rawSignature, $signature, $pk, OPENSSL_ALGO_SHA256);
-    $signature = base64_encode($signature);
-    dump($path);
-
-    /*$response = $client->get(baseUrl . $path, [
-        'headers' => [
-            'Digest' => $digest,
-            'Date' => date,
-            'Authorization' => 'Bearer ' . $token,
-            'Signature' => 'keyId="' . keyId . '",algorithm="rsa-sha256",'
-                . 'headers="(request-target) date digest",signature="' . $signature . '"',
-        ],
-        'cert' => '/home/vagrant/code/_v_certs/example_client_tls.cer',
-        'ssl_key' => '/home/vagrant/code/_v_certs/example_client_tls.key'
-    ]);
-    dump(json_decode($response->getBody()));*/
 });
